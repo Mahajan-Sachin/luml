@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc --build && vite build",
     "preview": "vite preview",
+    "test": "vitest",
+    "test:ci": "vitest run",
     "type-check": "vue-tsc --build --force",
     "test": "vitest run --config vite.config.ts",
     "lint": "eslint . --fix --cache",
