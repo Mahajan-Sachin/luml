@@ -56,6 +56,11 @@ from luml.experiments.backends.migration_runner import (
 from luml.experiments.utils import guess_span_type
 from luml.utils.tar import create_and_index_tar
 
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore[assignment]
+
 
 def _parse_timestamp(s: bytes) -> datetime:
     dt = datetime.fromisoformat(s.decode())
@@ -427,6 +432,9 @@ class SQLiteBackend(Backend, SQLitePaginationMixin):
 
         conn = self._get_experiment_connection(experiment_id)
         cursor = conn.cursor()
+
+        if np is not None and isinstance(value, np.generic):
+            value = float(value) if isinstance(value, np.floating) else value.item()
 
         if isinstance(value, str | int | float | bool):
             value_str = str(value)
