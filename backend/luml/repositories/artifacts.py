@@ -414,16 +414,24 @@ class ArtifactRepository(RepositoryBase, CrudMixin):
         search: str | None = None,
         excluded_tracks: list[UUID] | None = None,
     ) -> tuple[list[ArtifactListed], Cursor | None]:
+        sort_by = pagination.sort_by
+        sort_collection_ids = collection_ids or []
+        if not sort_collection_ids and sort_by not in ArtifactSortBy:
+            async with self._get_session() as session:
+                sort_collection_ids = list(
+                    await session.scalars(
+                        select(CollectionOrm.id).where(
+                            CollectionOrm.orbit_id == orbit_id
+                        )
+                    )
+                )
+        is_extra_values = await self._is_extra_values_sort(sort_collection_ids, sort_by)
+
+        if is_extra_values:
+            pagination.extra_sort_field = sort_by
+            pagination.sort_by = "extra_values"
+
         async with self._get_session() as session:
-            sort_by = pagination.sort_by
-            is_extra_values = await self._is_extra_values_sort(
-                collection_ids or [], sort_by
-            )
-
-            if is_extra_values:
-                pagination.extra_sort_field = sort_by
-                pagination.sort_by = "extra_values"
-
             conditions: list[Any] = [
                 ArtifactOrm.collection_id.in_(
                     select(CollectionOrm.id).where(CollectionOrm.orbit_id == orbit_id)
