@@ -89,8 +89,12 @@ def test_experiment_paths_cannot_resolve_to_root_or_outside_store(
     destination = backend.base_path if target == "root" else tmp_path / "outside"
     destination.mkdir(exist_ok=True)
     sentinel = destination / "keep.txt"
-    sentinel.write_text("keep")
-    (backend.base_path / "linked").symlink_to(destination, target_is_directory=True)
+    try:
+        (backend.base_path / "linked").symlink_to(destination, target_is_directory=True)
+    except OSError as err:
+        if getattr(err, "winerror", None) == 1314:
+            pytest.skip("Symlink creation requires admin privileges on Windows")
+        raise
     rmtree = Mock()
     monkeypatch.setattr("shutil.rmtree", rmtree)
     action = {
