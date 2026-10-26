@@ -1081,10 +1081,11 @@ class SQLiteBackend(Backend, SQLitePaginationMixin):
         from the filesystem.
 
         This method performs the following actions:
-          1. Deletes the experiment record from the database.
-          2. Marks the experiment as inactive in the experiment pool.
-          3. Deletes all associated files and directories for the experiment if they
+          1. Marks the experiment as inactive in the connection pool and closes its
+             database connection, so the files are not held open during removal.
+          2. Deletes all associated files and directories for the experiment if they
              exist on the filesystem.
+          3. Deletes the experiment record from the database.
 
         Args:
             experiment_id (str): The unique identifier of the experiment to delete.

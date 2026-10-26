@@ -1,5 +1,6 @@
 # flake8: noqa: E501
 import io
+import shutil
 import tarfile
 import tempfile
 from pathlib import Path
@@ -397,6 +398,32 @@ class TestDeleteExperiment:
         tracker.delete_experiment(exp_id)
 
         assert not exp_dir.exists()
+
+    def test_delete_closes_pooled_connection_before_removing_directory(
+        self,
+        tracker_with_experiment: tuple[ExperimentTracker, str],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        tracker, exp_id = tracker_with_experiment
+        tracker.log_static("key", "value")
+        tracker.end_experiment(exp_id)
+        exp_db = str(tmp_path / "experiments" / exp_id / "exp.db")
+        pool = tracker.backend.pool
+        pool.get_connection(exp_db)
+        open_at_rmtree: list[bool] = []
+        real_rmtree = shutil.rmtree
+
+        def rmtree(path: Path) -> None:
+            open_at_rmtree.append(exp_db in pool._connections)
+            real_rmtree(path)
+
+        monkeypatch.setattr(shutil, "rmtree", rmtree)
+
+        tracker.delete_experiment(exp_id)
+
+        assert open_at_rmtree == [False]
+        assert exp_db not in pool._connections
 
     def test_delete_makes_data_inaccessible(
         self, tracker_with_experiment: tuple[ExperimentTracker, str]
