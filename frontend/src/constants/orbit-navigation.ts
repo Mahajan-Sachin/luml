@@ -2,6 +2,7 @@ export const TAB_TO_ROUTE: Record<string, string> = {
   registry: 'orbit-collections',
   deployments: 'orbit-deployments',
   satellites: 'orbit-satellites',
+  flow: 'orbit-flow',
 }
 
 export const ROUTE_TO_TAB: Record<string, string> = {
@@ -10,6 +11,7 @@ export const ROUTE_TO_TAB: Record<string, string> = {
   'orbit-deployments': 'deployments',
   'orbit-satellites': 'satellites',
   'orbit-secrets': 'deployments',
+  'orbit-flow': 'flow',
 }
 
 export const ORBIT_TAB_ROUTES = [
@@ -18,6 +20,7 @@ export const ORBIT_TAB_ROUTES = [
   'orbit-deployments',
   'orbit-satellites',
   'orbit-secrets',
+  'orbit-flow',
 ]
 
 export const RESOURCE_ROUTE_TO_TAB_ROUTE: Record<string, string> = {

@@ -27,6 +27,7 @@ class Orbit(BaseModel, BaseOrmConfig):
     name: str
     organization_id: UUID
     bucket_secret_id: UUID
+    relay_id: UUID | None = None
     total_members: int | None = None
     total_collections: int | None = None
     total_satellites: int | None = None
@@ -46,6 +47,7 @@ class OrbitUpdate(BaseModel, BaseOrmConfig):
     id: UUID | None = None
     name: str | None = Field(default=None, max_length=100)
     bucket_secret_id: UUID | None = None
+    relay_id: UUID | None = None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -58,6 +60,7 @@ class OrbitUpdate(BaseModel, BaseOrmConfig):
 class OrbitCreateIn(BaseModel, BaseOrmConfig):
     name: str = Field(max_length=100)
     bucket_secret_id: UUID
+    relay_id: UUID | None = None
     members: list[OrbitMemberCreateSimple] | None = None
     notify: bool = False
 
@@ -65,6 +68,7 @@ class OrbitCreateIn(BaseModel, BaseOrmConfig):
 class OrbitCreate(BaseModel, BaseOrmConfig):
     name: str
     bucket_secret_id: UUID
+    relay_id: UUID | None = None
     organization_id: UUID | None = None
 
 
