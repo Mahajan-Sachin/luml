@@ -2,19 +2,21 @@ name: Frontend Tests and Linters
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, staging, production]
     paths:
       - 'frontend/**'
       - 'extras/js/packages/attachments/**'
       - 'extras/js/packages/experiments/**'
       - 'satellite/implementations/kubernetes/tests/snapshots/settings_fields.json'
   pull_request:
-    branches: [ main ]
+    branches: [main, staging, production]
     paths:
       - 'frontend/**'
       - 'extras/js/packages/attachments/**'
       - 'extras/js/packages/experiments/**'
       - 'satellite/implementations/kubernetes/tests/snapshots/settings_fields.json'
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
   lint:
