@@ -32,13 +32,16 @@ from mlflow.entities import (
 from mlflow.store.entities import PagedList
 from mlflow.store.tracking.abstract_store import AbstractStore
 from mlflow.utils.search_utils import SearchExperimentsUtils, SearchUtils
+from mlflow.utils.time import get_current_time_millis
 
 from luml_mlflow import tracing as _tracing
-from luml_mlflow._tracker import get_tracker
+from luml_mlflow._tracker import delete_experiment_if, get_tracker
 from luml_mlflow._unsupported import unsupported
 from luml_mlflow.meta import (
     LUML_LOCAL_ONLY,
+    META_RUN_INFO,
     RUN_ARTIFACT_URI,
+    RUN_DELETED_TIME,
     RUN_LIFECYCLE_STAGE,
     RUN_STATUS,
     RUN_USER_ID,
@@ -46,6 +49,7 @@ from luml_mlflow.meta import (
     reconstruct_run,
     write_luml_internal,
     write_run_info_field,
+    write_run_info_fields,
     write_tag,
     write_tags,
 )
@@ -54,6 +58,11 @@ from luml_mlflow.uri import LumlTarget, build_artifact_uri, parse_tracking_uri
 logger = logging.getLogger(__name__)
 
 DEFAULT_EXPERIMENT_NAME = "Default"
+
+
+def _is_deleted_metadata(metadata: dict[str, Any]) -> bool:
+    run_info = metadata.get(META_RUN_INFO) or {}
+    return run_info.get(RUN_LIFECYCLE_STAGE) == LifecycleStage.DELETED
 
 
 class LumlTrackingStore(AbstractStore):
@@ -314,13 +323,62 @@ class LumlTrackingStore(AbstractStore):
             )
 
     def delete_run(self, run_id: str) -> None:
-        self._tracker.delete_experiment(run_id)
+        """Mark a run deleted without removing its data.
+
+        MLflow's ``delete_run`` is a soft delete: the run keeps its metadata,
+        metrics, and artifacts, but is hidden from default searches and can be
+        restored with :meth:`restore_run`. The lifecycle stage is stored in the
+        run's ``run_info`` metadata, which :func:`reconstruct_run` already reads.
+        """
+        self._set_lifecycle(
+            run_id,
+            {
+                RUN_LIFECYCLE_STAGE: LifecycleStage.DELETED,
+                RUN_DELETED_TIME: get_current_time_millis(),
+            },
+        )
 
     def restore_run(self, run_id: str) -> None:
-        unsupported(
-            f"restore_run({run_id!r}) is not supported by the luml store",
-            exception_factory=NotImplementedError,
+        """Reverse :meth:`delete_run` by marking the run active again."""
+        self._set_lifecycle(
+            run_id,
+            {RUN_LIFECYCLE_STAGE: LifecycleStage.ACTIVE, RUN_DELETED_TIME: None},
         )
+
+    def _set_lifecycle(self, run_id: str, updates: dict[str, Any]) -> None:
+        try:
+            write_run_info_fields(self._tracker, run_id, updates)
+        except ValueError as exc:
+            from mlflow.exceptions import MlflowException
+
+            raise MlflowException(f"Run {run_id!r} not found") from exc
+        self._require_run(run_id)
+
+    def _get_deleted_runs(self, older_than: int = 0) -> list[str]:
+        threshold = get_current_time_millis() - older_than
+        deleted: list[str] = []
+        for record in self._tracker.list_experiments():
+            run_info = (record.metadata or {}).get(META_RUN_INFO) or {}
+            if run_info.get(RUN_LIFECYCLE_STAGE) != LifecycleStage.DELETED:
+                continue
+            deleted_time = run_info.get(RUN_DELETED_TIME)
+            if deleted_time is None or int(deleted_time) <= threshold:
+                deleted.append(record.id)
+        return deleted
+
+    def _hard_delete_run(self, run_id: str) -> None:
+        if delete_experiment_if(self._tracker, run_id, _is_deleted_metadata):
+            return
+        self._require_run(run_id)
+        from mlflow.exceptions import MlflowException
+
+        raise MlflowException(f"Run {run_id!r} is not in the deleted lifecycle stage")
+
+    def _require_run(self, run_id: str) -> None:
+        if self._tracker.get_experiment_record(run_id) is None:
+            from mlflow.exceptions import MlflowException
+
+            raise MlflowException(f"Run {run_id!r} not found")
 
     # ---------------------------------------------------------- params/metrics
 
@@ -390,6 +448,18 @@ class LumlTrackingStore(AbstractStore):
             run = reconstruct_run(self._tracker, record.id, self._artifact_uri_for_run)
             if run is not None:
                 runs.append(run)
+        if run_view_type == ViewType.ACTIVE_ONLY:
+            runs = [
+                run
+                for run in runs
+                if run.info.lifecycle_stage != LifecycleStage.DELETED
+            ]
+        elif run_view_type == ViewType.DELETED_ONLY:
+            runs = [
+                run
+                for run in runs
+                if run.info.lifecycle_stage == LifecycleStage.DELETED
+            ]
         filtered = SearchUtils.filter(runs, filter_string)
         ordered = SearchUtils.sort(filtered, order_by)
         return SearchUtils.paginate(ordered, page_token, max_results)
