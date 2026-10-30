@@ -2,9 +2,12 @@ import os
 import threading
 import time
 import webbrowser
+from pathlib import Path
 
 import typer
 import uvicorn
+
+from lumlflow.session import stored_session_token
 
 app = typer.Typer(
     name="lumlflow",
@@ -24,28 +27,40 @@ def ui(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Don't open browser automatically"
     ),
+    rotate_token: bool = typer.Option(
+        False,
+        "--rotate-token",
+        help="Issue a new session token; links with the old one stop working",
+    ),
 ) -> None:
     if path is not None:
         os.environ["BACKEND_STORE_URI"] = path
 
+    from lumlflow.server import app as server_app
     from lumlflow.settings import get_config
 
-    typer.echo(f"Using experiment store: {get_config().BACKEND_STORE_URI}")
-    url = f"http://{host}:{port}"
+    config = get_config()
+    if not config.LUMLFLOW_SESSION_TOKEN:
+        server_app.state.session_token = stored_session_token(
+            Path(config.BACKEND_STORE_URI), rotate_token
+        )
+
+    typer.echo(f"Using experiment store: {config.BACKEND_STORE_URI}")
+    url = f"http://{host}:{port}/#session-token={server_app.state.session_token}"
 
     def open_browser_delayed() -> None:
         time.sleep(1.0)
         webbrowser.open(url)
 
     if not no_browser:
-        typer.echo(f"Opening {url} in browser...")
+        typer.echo(f"Opening http://{host}:{port} in browser...")
         thread = threading.Thread(target=open_browser_delayed, daemon=True)
         thread.start()
     else:
         typer.echo(f"Lumlflow UI available at {url}")
 
     uvicorn.run(
-        "lumlflow.server:app",
+        server_app,
         host=host,
         port=port,
         reload=False,
